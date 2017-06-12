@@ -3,13 +3,14 @@
   hosts: localhost
   vars_files:
     - vars.yml
-  tasks:
+  pre_tasks:
     - name: Check python3 bin directory
       command: which python3
       register: python3_path
     - name: Get current directory
       command: pwd
       register: django_heroku_folder
+  tasks:
     - name: Start django project from heroku template
       command: "django-admin.py startproject --template=https://github.com/heroku/heroku-django-template/archive/master.zip --name=Procfile {{name}}"
       args:
@@ -39,8 +40,6 @@
       command: "virtualenv --python={{python3_path.stdout}} venv"
       args:
         chdir: "{{project_folder}}"
-    # - name: workon venv
-    #   shell: "source {{project_folder}}/venv/bin/activate"
     - name: Install requirements
       pip:
         requirements: "{{project_folder}}/requirements.txt"
@@ -56,7 +55,7 @@
       args:
         chdir: "{{project_folder}}"
     - name: Create bucket in Amazon S3
-      command: "aws s3 mb s3://{{name}}"
+      command: "aws s3 mb s3://{{aws.AWS_STORAGE_BUCKET_NAME}}"
     - name: Set AWS env vars in Heroku
       command: "heroku config:set AWS_ACCESS_KEY_ID={{aws.AWS_ACCESS_KEY_ID}} AWS_SECRET_ACCESS_KEY={{aws.AWS_SECRET_ACCESS_KEY}} AWS_STORAGE_BUCKET_NAME={{aws.AWS_STORAGE_BUCKET_NAME}}"
       args:
