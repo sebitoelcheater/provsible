@@ -1,0 +1,25 @@
+---
+- name: Set Django project with heroku
+  hosts: localhost
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Destroy heroku app
+      command: "heroku apps:destroy --app {{name}} --confirm {{name}}"
+      ignore_errors: yes
+    - name: Destroy project folder
+      command: "rm -rf {{project_folder}}"
+    - name: Destroy postgresql database
+      command: "psql -c 'drop database IF EXISTS {{postgres.database}};'"
+      # postgresql_db:
+      #   name: "{{postgres.database}}"
+      #   state: absent
+    - name: Destroy postgresql user
+      command: "psql -c 'drop user IF EXISTS {{postgres.user}}'"
+      # postgresql_user:
+      #   name: "{{postgres.user}}"
+      #   state: absent
+    - name: Remove content in AWS S3 bucket
+      command: "aws s3 rm s3://{{name}} --recursive"
+    - name: Destroy AWS S3 bucket
+      command: "aws s3 rb s3://{{name}}"

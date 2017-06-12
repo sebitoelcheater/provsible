@@ -1,0 +1,11 @@
+boto
+dj-database-url==0.4.1
+Django
+django-allauth
+django-rest-auth
+django-storages
+djangorestframework
+gunicorn==19.6.0
+Pillow
+psycopg2
+whitenoise==3.2

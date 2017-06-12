@@ -1,0 +1,122 @@
+---
+- name: Set Django project with heroku
+  hosts: localhost
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Check python3 bin directory
+      command: which python3
+      register: python3_path
+    - name: Get current directory
+      command: pwd
+      register: django_heroku_folder
+    - name: Start django project from heroku template
+      command: "django-admin.py startproject --template=https://github.com/heroku/heroku-django-template/archive/master.zip --name=Procfile {{name}}"
+      args:
+        chdir: "{{projects_folder}}"
+    - name: Replace custom requirements.txt
+      template:
+        src: "{{django_heroku_folder.stdout}}/templates/requirements.txt.template"
+        dest: "{{project_folder}}/requirements.txt"
+    - name: Git init
+      shell: "git init"
+      args:
+        chdir: "{{project_folder}}"
+    - name: Create heroku app if not exists
+      command: "heroku apps:create {{name}}"
+      args:
+        chdir: "{{project_folder}}"
+      when: not heroku_exists
+    - name: Add heroku remote if exists
+      command: "heroku git:remote -a {{name}}"
+      args:
+        chdir: "{{project_folder}}"
+    - name: Set ON_HEROKU env variable in heroku
+      command: heroku config:set ON_HEROKU=1
+      args:
+        chdir: "{{project_folder}}"
+    - name: Create virtualenv
+      command: "virtualenv --python={{python3_path.stdout}} venv"
+      args:
+        chdir: "{{project_folder}}"
+    # - name: workon venv
+    #   shell: "source {{project_folder}}/venv/bin/activate"
+    - name: Install requirements
+      pip:
+        requirements: "{{project_folder}}/requirements.txt"
+        virtualenv: "{{project_folder}}/venv"
+    - name: Pip freeze
+      command: "{{project_folder}}/venv/bin/pip freeze > {{project_folder}}/requirements.txt"
+    - name: Create addon pointdns
+      command: heroku addons:create pointdns:developer
+      args:
+        chdir: "{{project_folder}}"
+    - name: Create addon sendgrid
+      command: heroku addons:create sendgrid:starter
+      args:
+        chdir: "{{project_folder}}"
+    - name: Create bucket in Amazon S3
+      command: "aws s3 mb s3://{{name}}"
+    - name: Set AWS env vars in Heroku
+      command: "heroku config:set AWS_ACCESS_KEY_ID={{aws.AWS_ACCESS_KEY_ID}} AWS_SECRET_ACCESS_KEY={{aws.AWS_SECRET_ACCESS_KEY}} AWS_STORAGE_BUCKET_NAME={{aws.AWS_STORAGE_BUCKET_NAME}}"
+      args:
+        chdir: "{{project_folder}}"
+    - name: Create postgresql database
+      command: "psql -c \"CREATE DATABASE {{postgres.database}}\""
+    - name: Create user and grant privileges on postgresql database
+      command: "psql -c \"CREATE USER {{postgres.user}} WITH PASSWORD '{{postgres.password}}';
+        ALTER ROLE {{postgres.user}} SET client_encoding TO 'utf8';
+        ALTER ROLE {{postgres.user}} SET default_transaction_isolation TO 'read committed';
+        ALTER ROLE {{postgres.user}} SET timezone TO 'UTC';
+        GRANT ALL PRIVILEGES ON DATABASE {{postgres.database}} TO {{postgres.user}};\""
+    - name: Save env vars
+      template:
+        src: "{{django_heroku_folder.stdout}}/templates/.env.template"
+        dest: "{{project_folder}}/.env"
+    - name: Save local_settings
+      template:
+        src: "{{django_heroku_folder.stdout}}/templates/local_settings.py.template"
+        dest: "{{project_folder}}/{{name}}/local_settings.py"
+    - name: Save .gitignore
+      template:
+        src: "{{django_heroku_folder.stdout}}/templates/.gitignore.template"
+        dest: "{{project_folder}}/.gitignore"
+    - name: Create django apps
+      command: "venv/bin/python manage.py startapp {{item}}"
+      args:
+        chdir: "{{project_folder}}"
+      with_items: "{{django_apps}}"
+    - name: Save settings
+      template:
+        src: "{{django_heroku_folder.stdout}}/templates/settings.py.template"
+        dest: "{{project_folder}}/{{name}}/settings.py"
+    - name: Remove models.py and create a folder models for each app
+      shell: "rm models.py; mkdir models; echo '' > models/__init__.py;"
+      args:
+        chdir: "{{project_folder}}/{{item}}"
+      with_items: "{{django_apps}}"
+    - name: Remove models,.py and create a folder models for each app
+      shell: "rm {{item.1}}.py; mkdir {{item.1}}; echo '' > {{item.1}}/__init__.py;"
+      args:
+        chdir: "{{project_folder}}/{{item.0}}"
+      with_nested:
+        - "{{django_apps}}"
+        - [models,tests,views]
+    - name: django collectstatic
+      command: "{{project_folder}}/venv/bin/python manage.py collectstatic"
+      args:
+        chdir: "{{project_folder}}"
+    - name: django migrate
+      command: "{{project_folder}}/venv/bin/python {{project_folder}}/manage.py migrate"
+    - name: Git add and commit
+      shell: "git add -A; git commit -m 'project initialization';"
+      args:
+        chdir: "{{project_folder}}"
+    - name: Push to heroku
+      command: git push heroku master
+      args:
+        chdir: "{{project_folder}}"
+    - name: Migrate django on heroku
+      command: heroku run python manage.py migrate
+      args:
+        chdir: "{{project_folder}}"

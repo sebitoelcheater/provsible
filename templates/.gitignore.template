@@ -1,0 +1,9 @@
+venv
+*.pyc
+staticfiles
+.env
+.idea/
+media/
+*.sqlite3
+{{name}}/local_settings.py
+*.DS_Store
